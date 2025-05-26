@@ -1,0 +1,19 @@
+.git
+.gitignore
+node_modules
+npm-debug.log
+logs
+test
+tests 
+# Common test folder names, including 'tests' as some projects use it.
+# If specific test files are co-located with source, more granular ignores might be needed,
+# but typically tests are in a top-level 'test' or 'tests' directory.
+
+Dockerfile
+.dockerignore
+README.md
+jest.config.js
+
+# Add any other local development files/folders if they exist
+# e.g., .vscode, .idea, *.log, etc.
+# For this project, the above covers the main ones.

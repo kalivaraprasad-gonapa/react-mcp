@@ -29,35 +29,18 @@ React MCP provides a bridge between Claude AI and the React ecosystem, allowing 
 
 This server implements the Model Context Protocol, providing Claude with the ability to perform real-world actions in the development environment.
 
-## Features
+## Architecture
 
-- **React Project Management**
+The server is structured with a modular design within the `src` directory:
+- `src/core`: Core functionalities like command execution and process management.
+- `src/handlers`: Request handlers for each tool/capability.
+- `src/utils`: Utility functions, including the logger and log level definitions.
+- `src/schemas`: Zod schemas for request validation.
+- `src/config.js`: Centralized configuration management, primarily through environment variables.
+- `src/server.js`: Main server setup, request routing, and global error handling.
+- `index.js`: The main entry point that starts the server.
 
-  - Create new React applications with optional templates
-  - Run development servers
-  - Manage dependencies
-
-- **File Operations**
-
-  - Read and write files
-  - Edit React components and configuration
-
-- **Process Management**
-
-  - Start and monitor long-running processes
-  - Track process output in real-time
-  - Terminate processes when needed
-
-- **Command Execution**
-
-  - Run arbitrary terminal commands
-  - Install npm packages
-  - Execute development tasks
-
-- **Comprehensive Logging**
-  - Detailed JSON and text logs
-  - Process tracking with timestamps
-  - Execution history
+The application uses the Model Context Protocol SDK for communication, Zod for schema validation, and Node.js child processes for executing external commands.
 
 ## Installation
 
@@ -70,31 +53,49 @@ npx -y @smithery/cli install @Streen9/react-mcp --client claude
 ```
 
 ### Manual Installation
-1. Clone this repository
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/Streen9/react-mcp.git
+   cd react-mcp
+   ```
 2. Install dependencies:
-
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
+3. To run tests:
+   ```bash
+   npm test
+   ```
 
 ## Usage
 
-Add this in `claude_desktop_config`:
+Add this in `claude_desktop_config.jsonc` (or similar configuration file for your MCP client):
 
-```
+```jsonc
 {
   "mcpServers": {
     "react-mcp": {
       "command": "node",
       "args": [
-        "C:/Users/kalip/OneDrive/Desktop/react-mcp/index.js"
+        // Update this path to where you cloned react-mcp/index.js
+        "C:/path/to/your/cloned/react-mcp/index.js" 
       ]
-    },
+    }
   }
 }
 ```
 
-The server runs on the stdio transport, allowing it to be used with Desktop Claude APP as a Model Context Protocol tool.
+The server runs on the stdio transport, allowing it to be used with Desktop Claude App or other MCP-compatible clients.
+
+## Configuration
+
+The server can be configured using the following environment variables:
+
+- `REACT_MCP_LOG_DIR`: Specifies the directory where log files are stored.
+  - Default: `logs` (relative to the application root)
+- `REACT_MCP_LOG_LEVEL`: Controls the verbosity of the logs.
+  - Supported levels: `ERROR`, `WARN`, `INFO`, `DEBUG`.
+  - Default: `INFO`
 
 ## Available Tools
 
@@ -124,6 +125,8 @@ Parameters:
 
 - `command` (required): Command to execute
 - `directory` (optional): Directory to run the command in (defaults to current directory)
+
+*Note: Security measures are in place, including prevention of command chaining, path traversal restrictions, and a denylist for certain potentially dangerous commands.*
 
 ### `get-process-output`
 
@@ -172,29 +175,42 @@ Parameters:
 - `directory` (optional): Directory of the project (defaults to current directory)
 - `dev` (optional): Whether to install as a dev dependency
 
-### `check-installation-status`
-
-Checks the status of a package installation process.
-
-Parameters:
-
-- `processId` (required): ID of the installation process to check
+### `check-installation-status` 
+This tool was mentioned in the old README but does not have a corresponding handler in the current codebase. It might have been removed or planned. (Note: This tool is likely deprecated or was never fully implemented as no handler exists in the provided code.)
 
 ## Logging
 
-The server maintains detailed logs in the `logs` directory:
+The server maintains detailed logs:
 
-- `react-mcp-logs.json`: Structured JSON logs
-- `react-mcp-logs.txt`: Human-readable text logs
+- `react-mcp-logs.json`: Structured JSON logs.
+- `react-mcp-logs.txt`: Human-readable text logs.
 
-## Architecture
+The log directory can be configured via the `REACT_MCP_LOG_DIR` environment variable (defaults to `logs`).
+Log verbosity is configurable via the `REACT_MCP_LOG_LEVEL` environment variable (defaults to `INFO`).
 
-The server uses the following key components:
+## Docker
 
-- **Model Context Protocol SDK**: For communication with Claude AI
-- **StdioServerTransport**: For I/O through standard input/output
-- **Zod**: For schema validation and type safety
-- **Child Process**: For spawning and managing external processes
+The provided `Dockerfile` is optimized for production:
+- Uses a specific Node.js LTS version (`node:20-alpine`).
+- Runs the application as a non-root user (`appuser`) for enhanced security.
+- Includes a `.dockerignore` file to ensure a lean build context and smaller image size.
+- Omits development dependencies from the final image.
+
+To build the Docker image:
+```bash
+docker build -t react-mcp .
+```
+
+To run the Docker image (example, replace `/path/to/host/logs` with your desired log path if you want logs outside the container):
+```bash
+# Example for running and mounting a log volume
+docker run -i --rm \
+  -e REACT_MCP_LOG_DIR="/app/logs" \
+  -e REACT_MCP_LOG_LEVEL="DEBUG" \
+  -v /path/to/host/logs:/app/logs \
+  react-mcp
+```
+Note: For the stdio server, interactive mode (`-i` or `-it`) along with `--rm` for cleanup is usually recommended when running via `docker run`.
 
 ## License
 
@@ -207,3 +223,7 @@ MIT
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+When adding new features or fixing bugs, please ensure to add or update relevant tests. Tests can be run using:
+```bash
+npm test
+```
