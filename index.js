@@ -66,31 +66,31 @@ function startProcess(command, args, cwd) {
     env: { ...process.env, FORCE_COLOR: "true" },
   });
 
-  let output = "";
-  let errorOutput = "";
-
-  childProcess.stdout.on("data", (data) => {
-    const chunk = data.toString();
-    output += chunk;
-  });
-
-  childProcess.stderr.on("data", (data) => {
-    const chunk = data.toString();
-    errorOutput += chunk;
-  });
-
   const processId = Math.random().toString(36).substring(2, 15);
 
-  runningProcesses.set(processId, {
+  // Store output in an object so references are maintained
+  const processInfo = {
     process: childProcess,
     command,
     args,
     cwd,
-    output,
-    errorOutput,
+    output: "",
+    errorOutput: "",
     startTime: new Date(),
     processId,
+  };
+
+  childProcess.stdout.on("data", (data) => {
+    const chunk = data.toString();
+    processInfo.output += chunk;
   });
+
+  childProcess.stderr.on("data", (data) => {
+    const chunk = data.toString();
+    processInfo.errorOutput += chunk;
+  });
+
+  runningProcesses.set(processId, processInfo);
 
   return processId;
 }
