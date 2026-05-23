@@ -10,34 +10,6 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-// Line-based file editor helper
-class LineEditor {
-  constructor(content, lineEnding = '\n') {
-    this.lines = content.split(/\r?\n/);
-    this.lineEnding = lineEnding;
-  }
-
-  insertAtLine(lineIndex, newLines) {
-    const newLineArray = Array.isArray(newLines) ? newLines : [newLines];
-    this.lines.splice(lineIndex, 0, ...newLineArray);
-    return this;
-  }
-
-  replaceAtLine(lineIndex, newLines) {
-    const newLineArray = Array.isArray(newLines) ? newLines : [newLines];
-    this.lines.splice(lineIndex, 1, ...newLineArray);
-    return this;
-  }
-
-  findLine(pattern) {
-    return this.lines.findIndex(l => pattern.test ? pattern.test(l) : l.includes(pattern));
-  }
-
-  toString() {
-    return this.lines.join(this.lineEnding);
-  }
-}
-
 // Initialize logging
 const LOG_DIR = "logs";
 if (!fs.existsSync(LOG_DIR)) {
@@ -355,12 +327,27 @@ async function handleEditFile(params) {
     }
 
     // Write content to file
-    fs.writeFileSync(filePath, content, "utf8");
+    // Normalize line endings for JS/JSX/TS/TSX files to prevent whitespace issues
+    let normalizedContent = content;
+    const fileExt = path.extname(filePath).toLowerCase();
+    
+    if (['.jsx', '.js', '.tsx', '.ts'].includes(fileExt)) {
+      // Normalize to LF (React/JS ecosystem standard)
+      normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      
+      // Ensure file ends with a single newline
+      if (!normalizedContent.endsWith('\n')) {
+        normalizedContent += '\n';
+      }
+    }
+
+    // Write content to file
+    fs.writeFileSync(filePath, normalizedContent, "utf8");
 
     return {
       message: `File ${filePath} updated successfully`,
       filePath: filePath,
-      size: Buffer.byteLength(content, "utf8"),
+      size: Buffer.byteLength(normalizedContent, "utf8"),
     };
   } catch (error) {
     return {
@@ -440,98 +427,6 @@ async function handleInstallPackage(params) {
   }
 }
 
-
-async function handleBatchExecute(params) {
-  try {
-    const { operations } = params;
-
-    if (!operations || !Array.isArray(operations)) {
-      throw new Error("Operations array is required");
-    }
-
-    if (operations.length === 0) {
-      throw new Error("At least one operation is required");
-    }
-
-    const results = [];
-
-    for (const operation of operations) {
-      const { name, arguments: args = {} } = operation;
-
-      try {
-        let result;
-
-        switch (name) {
-          case "create-react-app":
-            const createArgs = CreateReactAppSchema.parse(args);
-            result = await handleCreateReactApp(createArgs);
-            break;
-          case "run-react-app":
-            const runArgs = RunReactAppSchema.parse(args);
-            result = await handleRunReactApp(runArgs);
-            break;
-          case "run-command":
-            const commandArgs = RunCommandSchema.parse(args);
-            result = await handleRunCommand(commandArgs);
-            break;
-          case "get-process-output":
-            const outputArgs = GetProcessOutputSchema.parse(args);
-            result = await handleGetProcessOutput(outputArgs);
-            break;
-          case "stop-process":
-            const stopArgs = StopProcessSchema.parse(args);
-            result = await handleStopProcess(stopArgs);
-            break;
-          case "list-processes":
-            result = await handleListProcesses();
-            break;
-          case "edit-file":
-            const editArgs = EditFileSchema.parse(args);
-            result = await handleEditFile(editArgs);
-            break;
-          case "read-file":
-            const readArgs = ReadFileSchema.parse(args);
-            result = await handleReadFile(readArgs);
-            break;
-          case "install-package":
-            const installArgs = InstallPackageSchema.parse(args);
-            result = await handleInstallPackage(installArgs);
-            break;
-          default:
-            throw new Error("Unknown operation: " + name);
-        }
-
-        results.push({
-          operation: name,
-          success: true,
-          result,
-        });
-      } catch (error) {
-        let errorMsg = error.message;
-        if (error instanceof z.ZodError) {
-          errorMsg = "Invalid arguments: " + error.errors.map(e => e.path.join(".") + ": " + e.message).join(", ");
-        }
-        results.push({
-          operation: name,
-          success: false,
-          error: errorMsg,
-        });
-      }
-    }
-
-    return {
-      message: "Executed " + results.length + " operations",
-      operations: results,
-      successCount: results.filter(r => r.success).length,
-      failureCount: results.filter(r => !r.success).length,
-    };
-  } catch (error) {
-    return {
-      error: "Error in batch execute: " + error.message,
-    };
-  }
-}
-
 // Server setup
 const server = new Server(
   {
@@ -582,16 +477,6 @@ const InstallPackageSchema = z.object({
   packageName: z.string(),
   directory: z.string().optional(),
   dev: z.boolean().optional(),
-});
-
-
-const BatchExecuteSchema = z.object({
-  operations: z.array(
-    z.object({
-      name: z.string(),
-      arguments: z.record(z.unknown()).optional(),
-    })
-  ),
 });
 
 // Tool request handler
@@ -747,35 +632,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["packageName"],
         },
       },
-      {
-        name: "batch-execute",
-        description: "Execute multiple operations in a single request",
-        inputSchema: {
-          type: "object",
-          properties: {
-            operations: {
-              type: "array",
-              description: "Array of operations to execute",
-              items: {
-                type: "object",
-                properties: {
-                  name: {
-                    type: "string",
-                    description: "Name of the tool to call",
-                  },
-                  arguments: {
-                    type: "object",
-                    description: "Arguments to pass to the tool",
-                    additionalProperties: true,
-                  },
-                },
-                required: ["name"],
-              },
-            },
-          },
-          required: ["operations"],
-        },
-      },
     ],
   };
   logToFile({ event: "list_tools", response }, "json");
@@ -835,10 +691,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request, context) => {
         result = await handleInstallPackage(installArgs);
         break;
 
-      case "batch-execute":
-        const batchArgs = BatchExecuteSchema.parse(args);
-        result = await handleBatchExecute(batchArgs);
-        break;
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -858,7 +710,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request, context) => {
 
 // Start the server
 const transport = new StdioServerTransport();
-await server.connect(transport);
+server.connect(transport).then(() => {
+  console.error("React MCP Server running on stdio");
+});
 
 const createTextResponse = (text) => ({
   content: [{ type: "text", text }],
